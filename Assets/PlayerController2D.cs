@@ -1,75 +1,95 @@
-using System;
 using UnityEngine;
 using UnityEngine.InputSystem;
 
-[RequireComponent (typeof (Rigidbody2D))]
+[RequireComponent(typeof(Rigidbody2D))]
 public class PlayerController2D : MonoBehaviour
 {
-    [Header("Movement")] 
+    [Header("Movement")]
     public float moveSpeed = 8f;
     public float jumpForce = 12f;
-    
+
     [Header("Ground Check")]
     public Transform groundCheck;
     public float groundCheckRadius = 0.15f;
     public LayerMask groundLayer;
-    
+
     [Header("Dash (Burst Velocity)")]
     public float dashSpeed = 18f;
     public float dashDuration = 0.12f;
     public float dashCooldown = 0.35f;
-    public bool dashKeepsVerticalVelocity = false; // if true, preserve y velocity
-    
+    public bool dashKeepsVerticalVelocity = false;
+
+    [Header("Wall")]
+    public Transform wallCheck;
+    public float wallCheckRadius = 0.18f;
+    public float wallSlideSpeed = 2.5f;
+
+    [Tooltip("Hold UP to climb. If false, player will only slide + wall jump.")]
+    public bool enableWallClimb = true;
+    public float wallClimbSpeed = 4.5f;
+
+    [Header("Wall Jump")]
+    public float wallJumpX = 10f;
+    public float wallJumpY = 12f;
+    public float wallJumpLockTime = 0.18f; // brief lockout so player doesn't instantly re-stick
+
     private Rigidbody2D rb;
     private Vector2 moveInput;
     private bool jumpPressed;
-
     private bool dashPressed;
+
     private bool isDashing;
     private float dashTimeLeft;
     private float dashCooldownLeft;
 
     private float defaultGravityScale;
-    private float lastFacingX = 1f; // tracks facing direction for dash
-    
+    private float lastFacingX = 1f;
+
+    private bool isWallTouching;
+    private bool isWallSliding;
+    private float wallJumpLockLeft;
+
     private void Awake()
     {
         rb = GetComponent<Rigidbody2D>();
         defaultGravityScale = rb.gravityScale;
     }
 
-    // Called by PlayerInput (Send Messages) for action named "Move"
+    // Input System: "Move"
     public void OnMove(InputValue value)
     {
         moveInput = value.Get<Vector2>();
-        // Update facing direction when player gives horizontal input
+
         if (Mathf.Abs(moveInput.x) > 0.01f)
             lastFacingX = Mathf.Sign(moveInput.x);
     }
 
-    // Called by PlayerInput (Send Messages) for action named "Jump"
+    // Input System: "Jump"
     public void OnJump(InputValue value)
     {
-        // value.isPressed is true on press, false on release
-        if(value.isPressed) jumpPressed = true;
+        if (value.isPressed)
+            jumpPressed = true;
     }
-    
-    // Input System: action "Dash"
+
+    // Input System: "Dash"
     public void OnDash(InputValue value)
     {
         if (value.isPressed)
             dashPressed = true;
     }
-    
+
     private void Update()
     {
-        // cooldown timer in Update so it feels responsive even if physics timestep is lower
-        if (dashCooldownLeft > 0f)
-            dashCooldownLeft -= Time.deltaTime;
+        if (dashCooldownLeft > 0f) dashCooldownLeft -= Time.deltaTime;
+        if (wallJumpLockLeft > 0f) wallJumpLockLeft -= Time.deltaTime;
     }
+
     private void FixedUpdate()
     {
-        // If currently dashing, override movement
+        bool grounded = IsGrounded();
+        isWallTouching = IsTouchingWall();
+
+        // If dashing, override everything
         if (isDashing)
         {
             dashTimeLeft -= Time.fixedDeltaTime;
@@ -78,46 +98,102 @@ public class PlayerController2D : MonoBehaviour
             rb.linearVelocity = new Vector2(lastFacingX * dashSpeed, yVel);
 
             if (dashTimeLeft <= 0f)
-            {
                 EndDash();
-            }
 
-            // Consume inputs for this frame
             jumpPressed = false;
             dashPressed = false;
             return;
         }
-        // Horizontal movement
+
+        // WALL SLIDE / CLIMB state
+        bool pressingIntoWall =
+            (moveInput.x > 0.1f && lastFacingX > 0f) ||
+            (moveInput.x < -0.1f && lastFacingX < 0f);
+
+        // Only slide/climb if:
+        // - not grounded
+        // - touching wall
+        // - falling or trying to cling
+        // - not in wall-jump lockout
+        isWallSliding = !grounded && isWallTouching && wallJumpLockLeft <= 0f && pressingIntoWall && rb.linearVelocity.y <= 0.1f;
+
+        if (isWallSliding)
+        {
+            // If holding UP and climb enabled, climb; otherwise slide down slowly
+            if (enableWallClimb && moveInput.y > 0.1f)
+            {
+                rb.gravityScale = 0f;
+                rb.linearVelocity = new Vector2(0f, wallClimbSpeed);
+            }
+            else
+            {
+                rb.gravityScale = defaultGravityScale;
+                float newY = Mathf.Max(rb.linearVelocity.y, -wallSlideSpeed);
+                rb.linearVelocity = new Vector2(0f, newY);
+            }
+
+            // Wall Jump (from slide/cling)
+            if (jumpPressed)
+            {
+                DoWallJump();
+            }
+
+            jumpPressed = false;
+            dashPressed = false;
+            return;
+        }
+        else
+        {
+            rb.gravityScale = defaultGravityScale;
+        }
+
+        // NORMAL MOVE
         rb.linearVelocity = new Vector2(moveInput.x * moveSpeed, rb.linearVelocity.y);
-        
-        // Jump (only when grounded)
-        if (jumpPressed && IsGrounded())
+
+        // NORMAL JUMP
+        if (jumpPressed && grounded)
         {
             rb.linearVelocity = new Vector2(rb.linearVelocity.x, jumpForce);
         }
-        jumpPressed = false;
-        
-        // Dash start
+
+        // DASH
         if (dashPressed && dashCooldownLeft <= 0f)
         {
             StartDash();
         }
 
-        // consume one-frame buttons
         jumpPressed = false;
         dashPressed = false;
     }
-    
+
+    private void DoWallJump()
+    {
+        // Determine which side the wall is on:
+        // If facing right and touching wall, wall is on right => jump left (negative)
+        float jumpDirX = -lastFacingX;
+
+        rb.gravityScale = defaultGravityScale;
+        rb.linearVelocity = new Vector2(jumpDirX * wallJumpX, wallJumpY);
+
+        // Flip facing direction to the jump direction for consistency
+        lastFacingX = Mathf.Sign(jumpDirX);
+
+        // Prevent instantly re-sticking to wall
+        wallJumpLockLeft = wallJumpLockTime;
+
+        // exit wall slide
+        isWallSliding = false;
+        jumpPressed = false;
+    }
+
     private void StartDash()
     {
         isDashing = true;
         dashTimeLeft = dashDuration;
         dashCooldownLeft = dashCooldown;
 
-        // Optional: turn off gravity during dash so it feels “snappy”
         rb.gravityScale = 0f;
 
-        // If you want dash to always go in input direction when held:
         if (Mathf.Abs(moveInput.x) > 0.01f)
             lastFacingX = Mathf.Sign(moveInput.x);
     }
@@ -126,20 +202,26 @@ public class PlayerController2D : MonoBehaviour
     {
         isDashing = false;
         rb.gravityScale = defaultGravityScale;
-
-        // When dash ends, keep some horizontal momentum or immediately return to move speed:
-        // This version just keeps current x velocity; your normal movement will take over next frame.
     }
 
     private bool IsGrounded()
     {
-        if (groundCheck ==  null) return false;
+        if (groundCheck == null) return false;
         return Physics2D.OverlapCircle(groundCheck.position, groundCheckRadius, groundLayer);
+    }
+
+    private bool IsTouchingWall()
+    {
+        if (wallCheck == null) return false;
+        return Physics2D.OverlapCircle(wallCheck.position, wallCheckRadius, groundLayer);
     }
 
     private void OnDrawGizmosSelected()
     {
-       if (groundCheck == null) return;
-       Gizmos.DrawWireSphere(groundCheck.position, groundCheckRadius);
+        if (groundCheck != null)
+            Gizmos.DrawWireSphere(groundCheck.position, groundCheckRadius);
+
+        if (wallCheck != null)
+            Gizmos.DrawWireSphere(wallCheck.position, wallCheckRadius);
     }
 }
