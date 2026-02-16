@@ -20,18 +20,20 @@ public class PlayerController2D : MonoBehaviour
     public bool dashKeepsVerticalVelocity = false;
 
     [Header("Wall")]
-    public Transform wallCheck;
+    public Transform wallCheckLeft;
+    public Transform wallCheckRight;
     public float wallCheckRadius = 0.18f;
     public float wallSlideSpeed = 2.5f;
 
-    [Tooltip("Hold UP to climb. If false, player will only slide + wall jump.")]
     public bool enableWallClimb = true;
     public float wallClimbSpeed = 4.5f;
 
     [Header("Wall Jump")]
     public float wallJumpX = 10f;
     public float wallJumpY = 12f;
-    public float wallJumpLockTime = 0.18f; // brief lockout so player doesn't instantly re-stick
+    public float wallJumpLockTime = 0.18f;
+
+    private int wallSide = 0; // -1 = wall on left, +1 = wall on right, 0 = none
 
     private Rigidbody2D rb;
     private Vector2 moveInput;
@@ -106,10 +108,9 @@ public class PlayerController2D : MonoBehaviour
         }
 
         // WALL SLIDE / CLIMB state
-        bool pressingIntoWall =
-            (moveInput.x > 0.1f && lastFacingX > 0f) ||
-            (moveInput.x < -0.1f && lastFacingX < 0f);
-
+        bool pressingIntoWall = (wallSide != 0) && (moveInput.x * wallSide > 0.1f);
+        // Explanation: if wall is on left (wallSide=-1), pressing into it means moveInput.x < 0
+        
         // Only slide/climb if:
         // - not grounded
         // - touching wall
@@ -170,7 +171,7 @@ public class PlayerController2D : MonoBehaviour
     {
         // Determine which side the wall is on:
         // If facing right and touching wall, wall is on right => jump left (negative)
-        float jumpDirX = -lastFacingX;
+        float jumpDirX = -wallSide; // jump away from the wall you are touching
 
         rb.gravityScale = defaultGravityScale;
         rb.linearVelocity = new Vector2(jumpDirX * wallJumpX, wallJumpY);
@@ -212,16 +213,24 @@ public class PlayerController2D : MonoBehaviour
 
     private bool IsTouchingWall()
     {
-        if (wallCheck == null) return false;
-        return Physics2D.OverlapCircle(wallCheck.position, wallCheckRadius, groundLayer);
+        wallSide = 0;
+
+        if (wallCheckLeft != null &&
+            Physics2D.OverlapCircle(wallCheckLeft.position, wallCheckRadius, groundLayer))
+            wallSide = -1;
+
+        if (wallCheckRight != null &&
+            Physics2D.OverlapCircle(wallCheckRight.position, wallCheckRadius, groundLayer))
+            wallSide = +1;
+
+        return wallSide != 0;
     }
 
     private void OnDrawGizmosSelected()
     {
-        if (groundCheck != null)
-            Gizmos.DrawWireSphere(groundCheck.position, groundCheckRadius);
-
-        if (wallCheck != null)
-            Gizmos.DrawWireSphere(wallCheck.position, wallCheckRadius);
+        if (wallCheckLeft != null)
+            Gizmos.DrawWireSphere(wallCheckLeft.position, wallCheckRadius);
+        if (wallCheckRight != null)
+            Gizmos.DrawWireSphere(wallCheckRight.position, wallCheckRadius);
     }
 }
