@@ -4,7 +4,7 @@
 PlayerSettings:
   m_ObjectHideFlags: 0
   serializedVersion: 28
-  productGUID: 07436c8700a1041f18a090f5e12ba0fe
+  productGUID: bc3b7392379e440a6914039d35f01578
   AndroidProfiler: 0
   AndroidFilterTouchesWhenObscured: 0
   AndroidEnableSustainedPerformanceMode: 0
@@ -515,7 +515,7 @@ PlayerSettings:
   ps4GarlicHeapSize: 2048
   ps4ProGarlicHeapSize: 2560
   playerPrefsMaxSize: 32768
-  ps4Passcode: S5Q6WPYK4yqnJLt0nm19qqclgEnajySq
+  ps4Passcode: n35UigwHAXzAt0Y1Vl9LLFEBWtlmRdpS
   ps4pnSessions: 1
   ps4pnPresence: 1
   ps4pnFriends: 1
@@ -682,11 +682,11 @@ PlayerSettings:
   captureStartupLogs: {}
   activeInputHandler: 1
   windowsGamepadBackendHint: 0
-  cloudProjectId: 2cdccbf3-f16b-44ab-8aa9-baf9c5bf4815
+  cloudProjectId: 
   framebufferDepthMemorylessMode: 0
   qualitySettingsNames: []
-  projectName: City Walker
-  organizationId: zer0die
+  projectName: 
+  organizationId: 
   cloudEnabled: 0
   legacyClampBlendShapeWeights: 0
   hmiLoadingImage: {fileID: 0}
