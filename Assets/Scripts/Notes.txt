@@ -1,0 +1,14 @@
+How to make the perfect 2d player movement/controller (& feel)
+
+기본적인 동작: 좌/우 이동 (입력 -> 출력)
+자연스러운 움직임이란 무엇인가?
+    - 관성의 법칙
+    - 중력, 가속도, 인간의 움직임
+    - 참고 예시: 마리오, 셀레스트, 오리 시리즈, Rain World, 
+               Gris/Neva, Hollow Knight, Nine Sols
+    
+** 인간 / 동물의 움직임의 규칙/원리 -> 물리 법칙
+    Canine의 움직임
+    Flock, birds 움직임 => Boids Algorithms
+    인간 + 동물 캐릭터의 움직임
+    

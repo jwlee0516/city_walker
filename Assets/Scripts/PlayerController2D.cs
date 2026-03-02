@@ -4,9 +4,18 @@ using UnityEngine.InputSystem;
 [RequireComponent(typeof(Rigidbody2D))]
 public class PlayerController2D : MonoBehaviour
 {
-    [Header("Movement")]
-    public float moveSpeed = 8f;
-    public float jumpForce = 12f;
+    [Header("Run Feel")]
+    public float maxRunSpeed = 9f;
+    public float groundAccel = 85f;
+    public float groundDecel = 110f;
+    public float airAccel = 55f;
+    public float airDecel = 25f;
+
+    [Header("Jump Feel")]
+    public float jumpVelocity = 14f;
+    public float fallGravityMultiplier = 2.6f;   // stronger gravity when falling
+    public float lowJumpMultiplier = 2.2f;       // stronger gravity if jump released early
+    public float maxFallSpeed = 28f;
 
     [Header("Ground Check")]
     public Transform groundCheck;
@@ -17,7 +26,10 @@ public class PlayerController2D : MonoBehaviour
     public float dashSpeed = 18f;
     public float dashDuration = 0.12f;
     public float dashCooldown = 0.35f;
-    public bool dashKeepsVerticalVelocity = false;
+    public bool dashKeepsVerticalVelocity = true;
+
+    [Tooltip("If 0, dash keeps normal gravity. If 0.3, dash has reduced gravity. If 0, recommended for less floaty feel.")]
+    public float dashGravityMultiplier = 0f;
 
     [Header("Wall")]
     public Transform wallCheckLeft;
@@ -37,7 +49,9 @@ public class PlayerController2D : MonoBehaviour
 
     private Rigidbody2D rb;
     private Vector2 moveInput;
+
     private bool jumpPressed;
+    private bool jumpHeld;     // NEW: for short hop / variable jump height
     private bool dashPressed;
 
     private bool isDashing;
@@ -69,8 +83,12 @@ public class PlayerController2D : MonoBehaviour
     // Input System: "Jump"
     public void OnJump(InputValue value)
     {
+        // pressed edge
         if (value.isPressed)
             jumpPressed = true;
+
+        // held state for short-hop
+        jumpHeld = value.isPressed;
     }
 
     // Input System: "Dash"
@@ -91,10 +109,15 @@ public class PlayerController2D : MonoBehaviour
         bool grounded = IsGrounded();
         isWallTouching = IsTouchingWall();
 
-        // If dashing, override everything
+        // -------------------------
+        // DASH state (burst velocity)
+        // -------------------------
         if (isDashing)
         {
             dashTimeLeft -= Time.fixedDeltaTime;
+
+            // Gravity during dash: 0 = normal, 0.3 = reduced, etc.
+            rb.gravityScale = defaultGravityScale * dashGravityMultiplier;
 
             float yVel = dashKeepsVerticalVelocity ? rb.linearVelocity.y : 0f;
             rb.linearVelocity = new Vector2(lastFacingX * dashSpeed, yVel);
@@ -107,16 +130,17 @@ public class PlayerController2D : MonoBehaviour
             return;
         }
 
-        // WALL SLIDE / CLIMB state
+        // -------------------------
+        // WALL SLIDE / CLIMB
+        // -------------------------
         bool pressingIntoWall = (wallSide != 0) && (moveInput.x * wallSide > 0.1f);
-        // Explanation: if wall is on left (wallSide=-1), pressing into it means moveInput.x < 0
-        
-        // Only slide/climb if:
-        // - not grounded
-        // - touching wall
-        // - falling or trying to cling
-        // - not in wall-jump lockout
-        isWallSliding = !grounded && isWallTouching && wallJumpLockLeft <= 0f && pressingIntoWall && rb.linearVelocity.y <= 0.1f;
+
+        isWallSliding =
+            !grounded &&
+            isWallTouching &&
+            wallJumpLockLeft <= 0f &&
+            pressingIntoWall &&
+            rb.linearVelocity.y <= 0.1f;
 
         if (isWallSliding)
         {
@@ -133,56 +157,80 @@ public class PlayerController2D : MonoBehaviour
                 rb.linearVelocity = new Vector2(0f, newY);
             }
 
-            // Wall Jump (from slide/cling)
             if (jumpPressed)
-            {
                 DoWallJump();
-            }
 
             jumpPressed = false;
             dashPressed = false;
             return;
+        }
+
+        // -------------------------
+        // NORMAL RUN (accel/decel)
+        // -------------------------
+        float targetSpeed = moveInput.x * maxRunSpeed;
+
+        float accelRate;
+        if (Mathf.Abs(targetSpeed) > 0.01f)
+            accelRate = grounded ? groundAccel : airAccel;
+        else
+            accelRate = grounded ? groundDecel : airDecel;
+
+        float newX = Mathf.MoveTowards(rb.linearVelocity.x, targetSpeed, accelRate * Time.fixedDeltaTime);
+        rb.linearVelocity = new Vector2(newX, rb.linearVelocity.y);
+
+        // -------------------------
+        // NORMAL JUMP
+        // -------------------------
+        if (jumpPressed && grounded)
+        {
+            rb.linearVelocity = new Vector2(rb.linearVelocity.x, jumpVelocity);
+        }
+        jumpPressed = false;
+
+        // -------------------------
+        // BETTER JUMP GRAVITY SHAPING (Mario/Ori-ish)
+        // -------------------------
+        float y = rb.linearVelocity.y;
+
+        if (y < 0f)
+        {
+            // falling fast
+            rb.gravityScale = defaultGravityScale * fallGravityMultiplier;
+        }
+        else if (y > 0f && !jumpHeld)
+        {
+            // short hop if you released jump
+            rb.gravityScale = defaultGravityScale * lowJumpMultiplier;
         }
         else
         {
             rb.gravityScale = defaultGravityScale;
         }
 
-        // NORMAL MOVE
-        rb.linearVelocity = new Vector2(moveInput.x * moveSpeed, rb.linearVelocity.y);
+        // clamp fall speed (prevents absurd terminal velocity)
+        if (rb.linearVelocity.y < -maxFallSpeed)
+            rb.linearVelocity = new Vector2(rb.linearVelocity.x, -maxFallSpeed);
 
-        // NORMAL JUMP
-        if (jumpPressed && grounded)
-        {
-            rb.linearVelocity = new Vector2(rb.linearVelocity.x, jumpForce);
-        }
-
-        // DASH
+        // -------------------------
+        // DASH trigger
+        // -------------------------
         if (dashPressed && dashCooldownLeft <= 0f)
-        {
             StartDash();
-        }
 
-        jumpPressed = false;
         dashPressed = false;
     }
 
     private void DoWallJump()
     {
-        // Determine which side the wall is on:
-        // If facing right and touching wall, wall is on right => jump left (negative)
-        float jumpDirX = -wallSide; // jump away from the wall you are touching
+        float jumpDirX = -wallSide; // jump away from wall
 
         rb.gravityScale = defaultGravityScale;
         rb.linearVelocity = new Vector2(jumpDirX * wallJumpX, wallJumpY);
 
-        // Flip facing direction to the jump direction for consistency
         lastFacingX = Mathf.Sign(jumpDirX);
-
-        // Prevent instantly re-sticking to wall
         wallJumpLockLeft = wallJumpLockTime;
 
-        // exit wall slide
         isWallSliding = false;
         jumpPressed = false;
     }
@@ -192,8 +240,6 @@ public class PlayerController2D : MonoBehaviour
         isDashing = true;
         dashTimeLeft = dashDuration;
         dashCooldownLeft = dashCooldown;
-
-        rb.gravityScale = 0f;
 
         if (Mathf.Abs(moveInput.x) > 0.01f)
             lastFacingX = Mathf.Sign(moveInput.x);
@@ -228,8 +274,12 @@ public class PlayerController2D : MonoBehaviour
 
     private void OnDrawGizmosSelected()
     {
+        if (groundCheck != null)
+            Gizmos.DrawWireSphere(groundCheck.position, groundCheckRadius);
+
         if (wallCheckLeft != null)
             Gizmos.DrawWireSphere(wallCheckLeft.position, wallCheckRadius);
+
         if (wallCheckRight != null)
             Gizmos.DrawWireSphere(wallCheckRight.position, wallCheckRadius);
     }
