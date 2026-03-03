@@ -1,0 +1,43 @@
+Ori Movement Feel
+
+responsive but smooth, floaty-but-snappy jumps, strong air control
+apex hang time, coyote time + jump buffering, fast-fall, gentle ground stickiness
+
+* Acceleration-based movement (not velocity snaps): fast response, still smooth.
+* Different accel/decel on ground vs air: Ori has strong air steering.
+* Coyote time + jump buffer: “forgiving” platforming.
+* Variable jump height: release early → short hop.
+* Apex hang: tiny gravity dip near the top → floaty, controllable.
+* Fast-fall: stronger gravity on the way down → snappy landings.
+* Ground “stick”: slight downward bias so you don’t hover off slopes/edges.
+* Optional abilities hooks: double jump / dash / wall interaction (kept minimal).
+
+Tuning it to feel more like Ori (practical knobs)
+These values matter more than code:
+
+1) “Floaty but not sluggish”
+	* timeToApex: 0.40–0.48
+	* jumpHeight: 3.2–4.2
+	* apexGravityMultiplier: 0.45–0.65
+	* fallGravityMultiplier: 1.7–2.2
+=> If it feels like “space”: increase fallGravityMultiplier and/or decrease apexGravityMultiplier.
+
+2) Ori’s air control is strong
+	* airAccel: 60–85
+	* airDecel: 45–70
+	* maxRunSpeed: 8.5–10.5
+
+3) Forgiveness (Ori is generous)
+	* coyoteTime: 0.08–0.12
+	* jumpBuffer: 0.10–0.15
+
+4) “Snappy short hops”
+	* jumpCutMultiplier: 0.35–0.55
+	* Lower = more dramatic short hop.
+
+Other things to consider
+1. Corner correction / ledge forgiveness (micro-nudges so you don’t bonk on ledges)
+2. Slope handling & snap-to-ground (especially on fast descents)
+3. Wall slide / wall jump tuned like Ori
+4. Dash with easing + cancel windows
+5. Animation-driven “anticipation” (Ori uses a lot of squash/anticipation to sell weight)
